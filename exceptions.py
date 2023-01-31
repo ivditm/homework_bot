@@ -1,4 +1,4 @@
-class MyException(BaseException):
+class MyException(Exception):
     """class of exception."""
 
     def __init__(self, text):

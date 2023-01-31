@@ -1,19 +1,15 @@
+from dotenv import load_dotenv
+import http
 import logging
 import os
 import requests
 import sys
 import telegram
 import time
-import http
 
-
-from dotenv import load_dotenv
-
-
-from exceptions import my_exception
+from exceptions import MyException, MyTypeError
 
 load_dotenv()
-
 
 PRACTICUM_TOKEN = os.getenv('YP_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
@@ -33,6 +29,20 @@ NUM_OF_HW_IN_LIST = 1
 LIST_OF_HW = []
 EMPTY = 0
 
+# сообщения о сложности жизни :(
+TOKEN_TROUBLES = 'нет токена: {token}'
+DEBUG_TEXT = 'сообщение об изменении статуса отправлено успешно'
+FUCK_UP_SEND_MESSAGE = 'проблема с отправкой сообщения: {error}'
+TROUBLES_API = 'Ошибка при запросе к основному API {error}'
+CODE_STATUS_TRUOBLE = 'проблемы с сайтом'
+NOT_DICT = 'вернул не словарь!'
+NOT_DICT_LIST = 'а в словаре не список'
+NOT_DICT_LIST_DICT = 'а в списке не словари'
+UNKNOWN_NAME = 'Такоко дз я не припомню, отстань!'
+UNKNOWN_STATUS = 'такого статуса еще не было, пипяо!'
+JSON_TROUBLES = 'проблемы с форматом json {error}'
+INFO_TEXT = 'Погнали!'
+
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.DEBUG)
@@ -40,19 +50,21 @@ logging.basicConfig(
 
 def check_tokens():
     """проверка доступности токенов."""
-    for key in [PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]:
-        if key is None:
-            logging.critical('бедааа с токенами')
-            sys.exit('Все полетело, ошибка токенов')
+    for key in ['PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID']:
+        if globals().get(key) is None:
+            logging.critical(TOKEN_TROUBLES.format(token=key))
+            raise (MyException(TOKEN_TROUBLES.format(token=key)) and sys.exit(
+            ))
 
 
 def send_message(bot, message):
     """отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.debug('сообщение отправлено')
+        logging.debug(DEBUG_TEXT)
     except telegram.error.TelegramError as error:
-        logging.error(f'проблема с отправкой сообщения: {error}')
+        logging.error(FUCK_UP_SEND_MESSAGE.format(error=error))
+        raise MyException(FUCK_UP_SEND_MESSAGE.format(error=error))
 
 
 def get_api_answer(timestamp):
@@ -61,46 +73,50 @@ def get_api_answer(timestamp):
         response = requests.get(ENDPOINT,
                                 headers=HEADERS,
                                 params={'from_date': timestamp})
-        if response.status_code != http.HTTPStatus.OK:
-            logging.error('проблемы с сайтом')
-            raise my_exception('проблемы с сайтом')
     except requests.exceptions.RequestException as error:
-        logging.error(f'Ошибка при запросе к основному API {error}')
-    return response.json()
+        raise MyException(TROUBLES_API.format(error=error))
+    if response.status_code != http.HTTPStatus.OK:
+        raise MyException(CODE_STATUS_TRUOBLE)
+    response_json = response.json()
+    for key in ('error', 'code'):
+        if key in response_json:
+            raise MyException(
+                JSON_TROUBLES.format(
+                    error=response_json[key])
+            )
+    return response_json
 
 
 def check_response(response):
     """проверяет ответ API на соответствие документации."""
     if not isinstance(response, dict):
-        logging.error('вернул не словарь!')
-        raise TypeError
+        raise MyTypeError(NOT_DICT)
     if not isinstance(response.get('homeworks'), list):
-        logging.error('а в словаре не список')
-        raise TypeError
+        raise MyTypeError(NOT_DICT_LIST)
     if len(response.get('homeworks')) != EMPTY:
         for element in response.get('homeworks'):
             if not isinstance(element, dict):
-                logging.error('а в списке не словари')
-                raise TypeError
+                raise MyTypeError(NOT_DICT_LIST_DICT)
 
 
 def parse_status(homework):
     """извлекает из информации о конкретной домашней работе статус."""
-    if homework.get("homework_name") is not None:
-        homework_name = homework.get("homework_name")
+    parse_name = homework.get("homework_name")
+    if parse_name is not None:
+        homework_name = parse_name
     else:
-        raise my_exception('Такоко дз я не припомню, отстань!')
+        raise MyException(UNKNOWN_NAME)
     hw_status = homework.get("status")
     if HOMEWORK_VERDICTS.get(hw_status) is not None:
         verdict = HOMEWORK_VERDICTS.get(hw_status)
     else:
-        raise my_exception('такого статуса еще не было, пипяо!')
+        raise MyException(UNKNOWN_STATUS)
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def main():
     """Основная логика работы бота."""
-    logging.info('Погнали!')
+    logging.info(INFO_TEXT)
     check_tokens()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
@@ -114,7 +130,7 @@ def main():
                         text.split(' ')[-1] != LIST_OF_HW[-1])):
                     send_message(bot, text)
                     timestamp = int(time.time())
-                    logging.debug('сообщение улетело и я с ним')
+                    logging.debug(DEBUG_TEXT)
                     time.sleep(RETRY_PERIOD)
                     LIST_OF_HW.append(text.split(' ')[-1])
                     if len(LIST_OF_HW) > NUM_OF_HW_IN_LIST:
@@ -126,7 +142,7 @@ def main():
             else:
                 time.sleep(RETRY_PERIOD)
                 timestamp = int(time.time())
-        except Exception as error:
+        except (MyException, MyTypeError) as error:
             message = f'Сбой в работе программы: {error}'
             logging.error(message)
             send_message(bot, message)

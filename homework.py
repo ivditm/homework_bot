@@ -1,4 +1,3 @@
-from dotenv import load_dotenv
 import http
 import logging
 import os
@@ -6,6 +5,8 @@ import requests
 import sys
 import telegram
 import time
+
+from dotenv import load_dotenv
 
 from exceptions import MyException, MyTypeError
 
@@ -31,8 +32,8 @@ EMPTY = 0
 
 # сообщения о сложности жизни :(
 TOKEN_TROUBLES = 'нет токена: {token}'
-DEBUG_TEXT = 'сообщение об изменении статуса отправлено успешно'
-FUCK_UP_SEND_MESSAGE = 'проблема с отправкой сообщения: {error}'
+TEXT_SUCCESS_SEND_MESSAGE = 'сообщение об изменении статуса отправлено успешно'
+UNSUCCESS_SEND_MESSAGE = 'проблема с отправкой сообщения: {error}'
 TROUBLES_API = 'Ошибка при запросе к основному API {error}'
 CODE_STATUS_TRUOBLE = 'проблемы с сайтом'
 NOT_DICT = 'вернул не словарь!'
@@ -61,10 +62,10 @@ def send_message(bot, message):
     """отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.debug(DEBUG_TEXT)
+        logging.debug(TEXT_SUCCESS_SEND_MESSAGE)
     except telegram.error.TelegramError as error:
-        logging.error(FUCK_UP_SEND_MESSAGE.format(error=error))
-        raise MyException(FUCK_UP_SEND_MESSAGE.format(error=error))
+        logging.error(UNSUCCESS_SEND_MESSAGE.format(error=error))
+        raise MyException(UNSUCCESS_SEND_MESSAGE.format(error=error))
 
 
 def get_api_answer(timestamp):
@@ -119,7 +120,7 @@ def main():
     logging.info(INFO_TEXT)
     check_tokens()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    timestamp = int(time.time())
+    timestamp = 0
     while True:
         try:
             response = get_api_answer(timestamp)
@@ -130,7 +131,7 @@ def main():
                         text.split(' ')[-1] != LIST_OF_HW[-1])):
                     send_message(bot, text)
                     timestamp = int(time.time())
-                    logging.debug(DEBUG_TEXT)
+                    logging.debug(TEXT_SUCCESS_SEND_MESSAGE)
                     time.sleep(RETRY_PERIOD)
                     LIST_OF_HW.append(text.split(' ')[-1])
                     if len(LIST_OF_HW) > NUM_OF_HW_IN_LIST:
